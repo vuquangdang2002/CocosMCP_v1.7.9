@@ -1,0 +1,601 @@
+<div class="mcp-app">
+    <!-- 过期警告弹窗 -->
+    <div class="expiry-warning-modal" v-if="showExpiryWarning">
+        <div class="expiry-warning-content">
+            <div class="expiry-warning-icon">&#9888;</div>
+            <h3 class="expiry-warning-title">{{ t('expiry_warning_title') }}</h3>
+            <p class="expiry-warning-message">
+                {{ t('expiry_warning_message', licenseInfo ? licenseInfo.daysRemaining : 0) }}
+            </p>
+            <div class="expiry-warning-actions">
+                <a class="auth-link-button" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">
+                    {{ t('renew_now') }}
+                </a>
+                <button class="auth-dismiss-button" @click="dismissExpiryWarning">
+                    {{ t('i_understand') }}
+                </button>
+            </div>
+            <div v-if="machineId" style="margin: 8px 0 0; padding: 6px 10px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 11px; color: #888; text-align: center;">
+                <span>{{ t('machine_id_label') || '机器码' }}: </span>
+                <span style="font-family: monospace; user-select: all; color: #aaa;">{{ machineId.length > 20 ? machineId.substring(0, 10) + '***' + machineId.substring(machineId.length - 10) : machineId }}</span>
+            </div>
+            <div class="expiry-warning-contact">
+                <span>{{ t('contact_support') }}: a549623165@gmail.com | {{ t('contact_wechat') }}: lidaxian-AI | 客服微信: vberai-support</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 变更激活码弹窗 -->
+    <div class="change-code-modal" v-if="showChangeCodeModal">
+        <div class="change-code-content">
+            <h3>{{ t('change_code_title') }}</h3>
+            <p class="change-code-desc">{{ t('change_code_desc') }}</p>
+            <div class="auth-field">
+                <label>{{ t('activation_code_label') }}</label>
+                <input class="auth-input" type="text" v-model="newCode" :placeholder="t('code_placeholder')" />
+            </div>
+            <div class="auth-error" v-if="changeCodeError">{{ changeCodeError }}</div>
+            <div v-if="machineId" style="margin: 8px 0; padding: 6px 10px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 11px; color: #888; text-align: center;">
+                <span>{{ t('machine_id_label') || '机器码' }}: </span>
+                <span style="font-family: monospace; user-select: all; color: #aaa;">{{ machineId.length > 20 ? machineId.substring(0, 10) + '***' + machineId.substring(machineId.length - 10) : machineId }}</span>
+            </div>
+            <div class="change-code-actions">
+                <button class="auth-activate-button" @click="changeLicenseCode" :disabled="changeCodeLoading">
+                    {{ changeCodeLoading ? t('activating') : t('confirm_change') }}
+                </button>
+                <button class="auth-dismiss-button" @click="showChangeCodeModal = false; newCode = ''; changeCodeError = ''">
+                    {{ t('cancel') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 授权过期弹窗 -->
+    <div class="expiry-warning-modal" v-if="showExpiredAlert">
+        <div class="expiry-warning-content">
+            <div class="expiry-warning-icon">&#128274;</div>
+            <h3 class="expiry-warning-title">{{ t('license_expired_title') }}</h3>
+            <p class="expiry-warning-message">{{ t('license_expired_message') }}</p>
+            <div v-if="machineId" style="margin: 12px 0; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 11px; color: #888; text-align: center;">
+                <span>{{ t('machine_id_label') || '机器码' }}: </span>
+                <span style="font-family: monospace; user-select: all; color: #aaa;">{{ machineId.length > 20 ? machineId.substring(0, 10) + '***' + machineId.substring(machineId.length - 10) : machineId }}</span>
+            </div>
+            <div class="expiry-warning-actions">
+                <a class="auth-link-button" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">
+                    {{ t('renew_now') }}
+                </a>
+                <button class="auth-dismiss-button" @click="confirmExpiredAlert">
+                    {{ t('go_to_login') }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 版本更新提醒弹窗 -->
+    <div class="update-modal-overlay" v-if="showUpdateDialog">
+        <div class="update-modal">
+            <div class="update-modal-header">
+                <div class="update-modal-badge">
+                    <template v-if="!updateInfo.hasUpdate">&#x2705; {{ t('update_no_update') }}</template>
+                    <span v-else-if="updateInfo.urgency === 'critical'" class="update-urgency-badge update-urgency-critical">{{ t('update_urgency_critical') }}</span>
+                    <span v-else-if="updateInfo.urgency === 'high'" class="update-urgency-badge update-urgency-high">{{ t('update_urgency_high') }}</span>
+                    <template v-else>&#x2728; {{ t('update_available_title') }}</template>
+                </div>
+                <h3 class="update-modal-title">{{ updateInfo.hasUpdate ? t('update_new_version', updateInfo.latestVersion) : t('update_no_update') }}</h3>
+                <p class="update-modal-version">{{ t('update_current_version', currentPluginVersion) }}</p>
+                <div class="update-modal-meta" v-if="updateInfo.hasUpdate">
+                    <span v-if="updateInfo.releaseDate">&#128197; {{ formatUpdateDate(updateInfo.releaseDate) }}</span>
+                    <span>&#128230; v{{ updateInfo.latestVersion }}</span>
+                </div>
+            </div>
+            <div class="update-modal-body" v-if="updateInfo.hasUpdate">
+                <div class="update-modal-changelog-label">{{ t('update_changelog') }}</div>
+                <div class="update-modal-changelog">{{ updateInfo.changelog || t('update_changelog_empty') }}</div>
+            </div>
+            <div class="update-modal-footer" v-if="updateInfo.hasUpdate">
+                <a class="update-btn-primary" :href="withUtm(updateInfo.downloadUrl || 'https://www.vberai.com/game-engines/cocos')" target="_blank" @click="dismissUpdate">
+                    &#x2B06;&#xFE0F; {{ t('update_now') }}
+                </a>
+                <div class="update-btn-row">
+                    <button class="update-btn-secondary" @click="dismissUpdate">
+                        {{ t('update_not_now') }}
+                    </button>
+                    <button class="update-btn-secondary update-btn-skip" @click="skipUpdateVersion">
+                        {{ t('update_skip_version', updateInfo.latestVersion) }}
+                    </button>
+                </div>
+            </div>
+            <div class="update-modal-footer" v-else>
+                <button class="update-btn-primary" @click="dismissUpdate">{{ t('update_not_now') }}</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 授权认证面板 -->
+    <div class="auth-panel" v-if="showAuthPanel && !authDisabled">
+        <div class="auth-brand">
+            <img class="auth-logo" src="packages://cocos-mcp-server/static/icon.png" alt="Cocos MCP Server" />
+            <div class="auth-brand-text">
+                <div class="auth-brand-name">{{ t('brand_name') }}</div>
+                <div class="auth-brand-subtitle">Cocos Creator MCP Server</div>
+            </div>
+        </div>
+
+        <div class="auth-form">
+            <!-- 登录方式已由下方 tab 指示，不再需要「选择登录方式」标题 -->
+            <div class="auth-form-header">
+                <select class="lang-select" :value="authLang" @change="onLangChange">
+                    <option v-for="loc in localeOptions" :key="loc.code" :value="loc.code">{{ loc.label }}</option>
+                </select>
+            </div>
+            <!-- 订阅登录关闭时只剩激活码一种方式，不显示只有一个页签的 tab 栏 -->
+            <div class="auth-tabs" v-if="subscriptionLoginEnabled">
+                <button class="auth-tab" :class="{ 'auth-tab-active': authMode === 'subscription' }"
+                        @click="switchAuthMode('subscription')">{{ t('subscription_choose_button') }}</button>
+                <button class="auth-tab" :class="{ 'auth-tab-active': authMode === 'license' }"
+                        @click="switchAuthMode('license')">{{ t('license_choose_button') }}</button>
+            </div>
+
+            <template v-if="authMode === 'license'">
+            <p class="auth-subtitle">{{ t('auth_subtitle') }}</p>
+            <p class="auth-store-hint">{{ t('store_purchase_hint') }}</p>
+            <div class="auth-field">
+                <label>{{ t('email_label') }}</label>
+                <input class="auth-input" type="email" v-model="authEmail" :placeholder="t('email_placeholder')" />
+            </div>
+
+            <div class="auth-field">
+                <label>{{ t('activation_code_label') }}</label>
+                <input class="auth-input" type="text" v-model="authCode" :placeholder="t('code_placeholder')" />
+            </div>
+
+            <div class="auth-error" v-if="authError">{{ authError }}</div>
+            <div class="auth-success" v-if="authSuccess">{{ authSuccess }}</div>
+
+            <button class="auth-activate-button" @click="activateLicense" :disabled="authLoading">
+                {{ authLoading ? t('activating') : t('activate_button') }}
+            </button>
+
+            <div class="auth-links">
+                <a class="auth-link" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">
+                    {{ t('purchase_license') }}
+                </a>
+            </div>
+            </template>
+
+            <template v-else-if="authMode === 'subscription'">
+            <div class="entitlement-state" v-if="subscriptionInfo.loggedIn && subscriptionInfo.denyCode">
+                <div class="entitlement-account">
+                    <span class="entitlement-icon">⚠</span>
+                    <div><div class="entitlement-label">{{ t('subscription_logged_in') }}</div><div class="entitlement-email">{{ subscriptionInfo.email }}</div></div>
+                </div>
+                <div class="entitlement-message">{{ subscriptionError }}</div>
+                <div class="entitlement-actions">
+                    <a class="entitlement-upgrade" :href="withUtm(subscriptionInfo.upgradeUrl || 'https://www.vberai.com/pricing')" target="_blank">{{ t('subscription_upgrade_action') }}</a>
+                    <button class="entitlement-logout" @click="logoutCurrentAuth">{{ t('logout_button') }}</button>
+                </div>
+            </div>
+            <template v-else>
+            <div class="auth-field">
+                <label>{{ t('email_label') }}</label>
+                <input class="auth-input" type="email" v-model="subscriptionEmail" :placeholder="t('email_placeholder')" />
+            </div>
+            <div class="auth-field">
+                <label>{{ t('subscription_password_label') }}</label>
+                <input class="auth-input" type="password" v-model="subscriptionPassword" :placeholder="t('subscription_password_placeholder')" @keyup.enter="loginSubscription" />
+            </div>
+            <div class="auth-error" v-if="subscriptionError">{{ subscriptionError }}</div>
+            <div class="auth-success" v-if="subscriptionGooglePending">{{ t('subscription_google_pending') }}</div>
+            <button class="auth-activate-button" @click="loginSubscription" :disabled="subscriptionLoading">
+                {{ subscriptionLoading ? t('subscription_logging_in') : t('subscription_login_button') }}
+            </button>
+            <button class="auth-dismiss-button" style="width:100%; margin-top:8px" @click="loginSubscriptionGoogle" :disabled="subscriptionLoading">
+                {{ subscriptionGooglePending ? t('subscription_google_pending_button') : t('subscription_google_button') }}
+            </button>
+            <div class="auth-links">
+                <a class="auth-link" :href="withUtm((subscriptionInfo.webBase || 'https://test.vberai.com') + '/auth/register')" target="_blank">{{ t('subscription_register_button') }}</a>
+            </div>
+            </template>
+            </template>
+
+            <div class="auth-contact">
+                <div class="auth-contact-item">📧 a549623165@gmail.com</div>
+                <div class="auth-contact-item">💬 {{ t('contact_wechat') }}: lidaxian-AI</div>
+                <div class="auth-contact-item">💬 客服微信: vberai-support</div>
+            </div>
+
+            <div class="auth-machine-id" v-if="machineId" style="margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,0.05); border-radius: 4px; font-size: 11px; color: #888; text-align: center;">
+                <span>{{ t('machine_id_label') || '机器码' }}: </span>
+                <span style="font-family: monospace; user-select: all; color: #aaa;">{{ machineId.length > 20 ? machineId.substring(0, 10) + '***' + machineId.substring(machineId.length - 10) : machineId }}</span>
+            </div>
+        </div>
+
+        <div class="auth-footer">
+            <span class="auth-version">v1.7.9</span>
+        </div>
+    </div>
+
+    <!-- 主界面（授权通过后显示） -->
+    <template v-if="!showAuthPanel || authDisabled">
+
+    <!-- 顶部品牌区域 -->
+    <div class="brand-top">
+        <div class="brand-top-left">
+            <img class="brand-top-logo" src="packages://cocos-mcp-server/static/icon.png" alt="Cocos MCP Server" />
+            <div class="brand-top-text">
+                <div class="brand-top-name">{{ t('brand_name') }}</div>
+                <div class="brand-top-subtitle">Cocos Creator MCP Server v1.7.9</div>
+            </div>
+        </div>
+        <div class="brand-top-right" v-if="isLicensed && (licenseInfo || subscriptionInfo.loggedIn) && !authDisabled">
+            <div class="brand-right-row">
+                <!-- 登录方式徽标：订阅优先（logoutCurrentAuth 也是先退订阅），据此决定顶栏显示哪套信息 -->
+                <span class="brand-license-item brand-method-badge">{{ subscriptionInfo.loggedIn ? '👤 ' + t('subscription_method_label') : '🔑 ' + t('license_choose_button') }}</span>
+                <span class="brand-license-divider">|</span>
+                <span class="brand-license-item">📧 {{ getMaskedEmail }}</span>
+                <!-- 剩余天数/许可证类型/变更激活码是激活码专属；订阅登录时不显示（订阅按用量计费，无固定到期天数） -->
+                <template v-if="licenseInfo && !subscriptionInfo.loggedIn">
+                <span class="brand-license-divider">|</span>
+                <span class="brand-license-item">📋 {{ licenseInfo.licenseType }}</span>
+                <span class="brand-license-divider">|</span>
+                <span class="brand-license-item" :class="expiryColorClass">
+                    📅 {{ licenseInfo.daysRemaining === 9999 ? t('permanent_label') : licenseInfo.daysRemaining + t('days_unit') }}
+                </span>
+                <a v-if="licenseInfo.daysRemaining <= 7 && licenseInfo.daysRemaining !== 9999"
+                   class="brand-renew-link" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">
+                    ⚠ {{ t('renew_now') }}
+                </a>
+                </template>
+            </div>
+            <!-- 邀请码功能暂时屏蔽
+            <div class="brand-right-row" v-if="licenseInfo.inviteCode">
+                <span class="brand-license-item" style="font-weight:bold; color:#5ad;">🎟️ {{ t('invite_code_label') }}: {{ licenseInfo.inviteCode }}</span>
+                <button class="brand-action-btn" @click="copyInviteCode" style="margin-left:6px; font-size:11px;">{{ t('copy_button') }}</button>
+            </div>
+            -->
+            <div class="brand-right-row">
+                <button v-if="licenseInfo && !subscriptionInfo.loggedIn" class="brand-action-btn" @click="showChangeCodeModal = true">{{ t('change_code_button') }}</button>
+                <!-- 订阅登录时常驻升级入口：随时可去官网升级订阅计划 -->
+                <a v-if="subscriptionInfo.loggedIn" class="brand-action-btn brand-upgrade-btn" :href="withUtm(subscriptionInfo.upgradeUrl || 'https://www.vberai.com/pricing')" target="_blank">{{ t('subscription_upgrade_action') }}</a>
+                <button class="brand-action-btn brand-logout-btn" @click="logoutCurrentAuth">{{ t('logout_button') }}</button>
+                <select class="lang-select lang-select-sm" :value="authLang" @change="onLangChange">
+                    <option v-for="loc in localeOptions" :key="loc.code" :value="loc.code">{{ loc.label }}</option>
+                </select>
+            </div>
+        </div>
+        <div class="brand-top-right" v-else-if="!authDisabled">
+            <select class="lang-select lang-select-sm" :value="authLang" @change="onLangChange">
+                <option v-for="loc in localeOptions" :key="loc.code" :value="loc.code">{{ loc.label }}</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- 选项卡导航 -->
+    <div class="tab-navigation">
+        <button class="tab-button" :class="{ active: activeTab === 'server' }" @click="switchTab('server')">
+            <span>{{ t('server_tab') }}</span>
+        </button>
+        <button class="tab-button" :class="{ active: activeTab === 'tools' }" @click="switchTab('tools')">
+            <span>{{ t('tools_tab') }}</span>
+        </button>
+        <button class="tab-button" :class="{ active: activeTab === 'config' }" @click="switchTab('config')">
+            <span>{{ t('config_tab') }}</span>
+        </button>
+    </div>
+
+    <!-- 服务器选项卡 -->
+    <div class="tab-content" v-show="activeTab === 'server'">
+        <section class="server-status">
+            <h3>{{ t('server_status_title') }}</h3>
+            <div class="status-info">
+                <ui-prop>
+                    <ui-label slot="label">{{ t('status_label') }}</ui-label>
+                    <ui-label slot="content" class="status-value" :class="statusClass">{{ serverStatus }}</ui-label>
+                </ui-prop>
+                <ui-prop v-if="serverRunning">
+                    <ui-label slot="label">{{ t('connections_count') }}</ui-label>
+                    <ui-label slot="content">{{ connectedClients }}</ui-label>
+                </ui-prop>
+            </div>
+        </section>
+
+        <section class="server-controls">
+            <ui-button @click="toggleServer" :disabled="isProcessing" class="primary">
+                {{ serverRunning ? t('stop_server') : t('start_server') }}
+            </ui-button>
+        </section>
+
+        <section class="server-settings">
+            <h3>{{ t('server_settings_title') }}</h3>
+            <div class="port-fallback-notice" v-if="portFallback">
+                <div class="port-fallback-title">⚠ {{ t('port_fallback_title', portFallback.requestedPort, portFallback.actualPort) }}</div>
+                <div class="port-fallback-body">{{ t('port_fallback_reason', portFallback.requestedPort) }}</div>
+                <div class="port-fallback-body" v-if="portFallback.resyncedClients && portFallback.resyncedClients.length">
+                    {{ t('port_fallback_resynced', portFallback.resyncedClients.join('、')) }}
+                </div>
+                <div class="port-fallback-body" v-else>{{ t('port_fallback_no_clients') }}</div>
+                <button class="auth-dismiss-button" @click="dismissPortFallback">{{ t('port_fallback_dismiss') }}</button>
+            </div>
+            <ui-prop>
+                <ui-label slot="label">{{ t('transport_protocol') }}</ui-label>
+                <ui-label slot="content" style="color: #007acc; font-weight: bold;">Streamable HTTP (MCP 2025-03-26)</ui-label>
+            </ui-prop>
+            <ui-prop>
+                <ui-label slot="label">{{ t('port_label') }}</ui-label>
+                <ui-num-input slot="content" v-model="settings.port" :min="1024" :max="65535" :step="1">
+                </ui-num-input>
+            </ui-prop>
+            <ui-prop>
+                <ui-label slot="label">{{ t('auto_start_label') }}</ui-label>
+                <ui-checkbox slot="content" :value="settings.autoStart" @confirm="(e) => { settings.autoStart = e.target.value; }"></ui-checkbox>
+            </ui-prop>
+            <ui-prop>
+                <ui-label slot="label">{{ t('debug_log_label') }}</ui-label>
+                <ui-checkbox slot="content" :value="settings.debugLog" @confirm="(e) => { settings.debugLog = e.target.value; }"></ui-checkbox>
+            </ui-prop>
+            <ui-prop>
+                <ui-label slot="label">{{ t('max_connections_label') }}</ui-label>
+                <ui-num-input slot="content" v-model="settings.maxConnections" :min="1" :max="100" :step="1">
+                </ui-num-input>
+            </ui-prop>
+        </section>
+
+        <section class="server-info" v-if="serverRunning">
+            <h3>{{ t('connection_info_title') }}</h3>
+            <div class="connection-details">
+                <ui-prop>
+                    <ui-label slot="label">{{ t('mcp_url') }}</ui-label>
+                    <ui-input slot="content" :value="httpUrl" readonly>
+                        <ui-button slot="suffix" @click="copyUrl">{{ t('copy') }}</ui-button>
+                    </ui-input>
+                </ui-prop>
+                <ui-prop>
+                    <ui-label slot="label">{{ t('transport_type') }}</ui-label>
+                    <ui-label slot="content">Streamable HTTP</ui-label>
+                </ui-prop>
+            </div>
+        </section>
+
+        <footer>
+            <ui-button @click="saveSettings" :disabled="!settingsChanged">{{ t('save_settings') }}</ui-button>
+        </footer>
+
+        <!-- 品牌 & 版权信息区域 -->
+        <section class="copyright-info">
+            <div class="brand-header">
+                <img class="brand-logo" src="packages://cocos-mcp-server/static/icon.png" alt="Cocos MCP Server" />
+                <div class="brand-text">
+                    <div class="brand-name">{{ t('brand_name') }}</div>
+                    <div class="brand-subtitle">{{ t('brand_subtitle') }}</div>
+                </div>
+            </div>
+            <div class="copyright-content">
+                <div class="copyright-text">
+                    <div class="copyright-line">{{ t('copyright_line', '1.7.9') }}</div>
+                    <div class="copyright-line">{{ t('protocol_line') }}</div>
+                </div>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <span class="contact-label">📧 {{ t('contact_email') }}:</span>
+                        <span class="contact-value">a549623165@gmail.com</span>
+                    </div>
+                    <div class="contact-item">
+                        <span class="contact-label">💬 {{ t('contact_wechat') }}:</span>
+                        <span class="contact-value">lidaxian-AI</span>
+                    </div>
+                    <div class="contact-item">
+                        <span class="contact-label">💬 客服微信:</span>
+                        <span class="contact-value">vberai-support</span>
+                    </div>
+                    <div class="contact-item">
+                        <span class="contact-label">🐙 {{ t('contact_github') }}:</span>
+                        <span class="contact-value">https://github.com/DaxianLee</span>
+                    </div>
+                </div>
+                <div class="contact-info" style="margin-top: 6px;">
+                    <div class="contact-item">
+                        <span class="contact-label">🛒 {{ t('purchase_renew') }}:</span>
+                        <a class="contact-link" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">www.vberai.com/game-engines/cocos</a>
+                    </div>
+                </div>
+                <div style="margin-top: 8px; text-align: center;">
+                    <button class="brand-action-btn" @click="manualCheckUpdate" :disabled="updateChecking" style="font-size: 11px; padding: 3px 12px;">
+                        {{ updateChecking ? t('update_checking') : t('check_for_updates') }}
+                    </button>
+                </div>
+                <div v-if="updateCheckMessage" style="margin-top: 6px; text-align: center; font-size: 11px; color: #9ab;">{{ updateCheckMessage }}</div>
+                <div v-if="machineId" style="margin-top: 8px; text-align: center; font-size: 11px; color: #888;">
+                    <span>{{ t('machine_id_label') || '机器码' }}: </span>
+                    <span style="font-family: monospace; user-select: all; color: #aaa;">{{ machineId.length > 20 ? machineId.substring(0, 10) + '***' + machineId.substring(machineId.length - 10) : machineId }}</span>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 工具管理选项卡 -->
+    <div class="tab-content" v-show="activeTab === 'tools'">
+        <section class="tool-manager">
+            <div class="tool-manager-header">
+                <h3>{{ t('tool_management') }}</h3>
+            </div>
+
+            <div class="tools-section">
+                <div class="tools-section-header">
+                    <div class="tools-section-title">
+                        <h4>{{ t('available_tools') }}</h4>
+                        <div class="tools-stats">
+                            {{ t('tools_stats', totalTools, enabledTools, disabledTools) }}
+                        </div>
+                    </div>
+                    <div class="tools-section-controls">
+                        <ui-button @click="selectAllTools" class="small">{{ t('select_all') }}</ui-button>
+                        <ui-button @click="deselectAllTools" class="small">{{ t('deselect_all') }}</ui-button>
+                        <ui-button @click="saveChanges" class="primary">{{ t('save_changes') }}</ui-button>
+                    </div>
+                </div>
+
+                <div class="tools-container">
+                    <div v-for="category in toolCategories" :key="category" class="tool-category">
+                        <div class="category-header">
+                            <h5>{{ getCategoryDisplayName(category) }}</h5>
+                            <div class="category-controls">
+                                <ui-button @click="toggleCategoryTools(category, true)" class="small">{{ t('select_all') }}</ui-button>
+                                <ui-button @click="toggleCategoryTools(category, false)" class="small">{{ t('deselect_all') }}</ui-button>
+                            </div>
+                        </div>
+                        <div class="tool-items">
+                            <div v-for="tool in getToolsByCategory(category)" :key="tool.name" class="tool-item">
+                                <ui-checkbox
+                                    :value="tool.enabled"
+                                    @change="(event) => updateToolStatus(category, tool.name, event.target.checked)"
+                                ></ui-checkbox>
+                                <div class="tool-info">
+                                    <div class="tool-name">{{ tool.name }}</div>
+                                    <div class="tool-description">{{ tool.description }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 工具管理选项卡版权信息 -->
+        <section class="copyright-info">
+            <div class="brand-header brand-compact">
+                <img class="brand-logo" src="packages://cocos-mcp-server/static/icon.png" alt="Cocos MCP Server" />
+                <div class="brand-name">{{ t('brand_name') }}</div>
+            </div>
+            <div class="copyright-content">
+                <div class="copyright-text">
+                    <div class="copyright-line">🛠️ {{ t('tools_copyright_line1') }}</div>
+                    <div class="copyright-line">📧 a549623165@gmail.com | 💬 {{ t('contact_wechat') }}: lidaxian-AI | 💬 客服微信: vberai-support | 🛒 <a class="contact-link" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">{{ t('purchase_renew') }}</a></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 一键配置选项卡 -->
+    <div class="tab-content" v-show="activeTab === 'config'">
+        <section class="quick-config">
+            <div class="config-header">
+                <h3>{{ t('quick_config_title') }}</h3>
+                <p class="config-description">{{ t('quick_config_desc') }}</p>
+            </div>
+
+            <section class="server-info-section">
+                <h4>{{ t('server_info') }}</h4>
+                <ui-prop>
+                    <ui-label slot="label">{{ t('server_name_label') }}</ui-label>
+                    <ui-input slot="content" v-model="configServerName" placeholder="cocos-creator"></ui-input>
+                </ui-prop>
+                <ui-prop>
+                    <ui-label slot="label">{{ t('server_address') }}</ui-label>
+                    <ui-input slot="content" :value="configServerUrl" readonly></ui-input>
+                </ui-prop>
+                <ui-prop>
+                    <ui-label slot="label">{{ t('timeout_ms') }}</ui-label>
+                    <ui-num-input slot="content" v-model="configTimeout" :min="5000" :max="60000" :step="1000"></ui-num-input>
+                </ui-prop>
+            </section>
+
+            <section class="ide-config-section">
+                <div class="section-header">
+                    <h4>{{ t('auto_config_title') }}</h4>
+                    <div class="batch-actions">
+                        <ui-button @click="addToAllIDE" class="primary" :disabled="!serverRunning">{{ t('add_all') }}</ui-button>
+                        <ui-button @click="removeFromAllIDE" class="danger">{{ t('remove_all') }}</ui-button>
+                    </div>
+                </div>
+                <p class="section-note">{{ t('auto_config_note') }}</p>
+
+                <div class="client-list">
+                    <div v-for="client in ideClients" :key="client.clientType" class="client-item">
+                        <div class="client-info">
+                            <div class="client-name">{{ client.clientName }}</div>
+                            <div class="client-path">{{ client.configPath }}</div>
+                            <div class="client-status" :class="client.exists ? 'exists' : 'not-exists'">
+                                {{ client.exists ? '✓ ' + t('configured') : '✗ ' + t('not_configured') }}
+                            </div>
+                        </div>
+                        <div class="client-actions">
+                            <ui-button @click="addToClient(client.clientType)" class="small" :disabled="client.exists">{{ t('auto_config_btn') }}</ui-button>
+                            <ui-button @click="removeFromClient(client.clientType)" class="small danger" :disabled="!client.exists">{{ t('delete_btn') }}</ui-button>
+                            <ui-button @click="copyClientConfig(client.clientType)" class="small">{{ t('copy_config') }}</ui-button>
+                            <ui-button @click="openConfigFile(client.configPath)" class="small">{{ t('open_config') }}</ui-button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="cli-config-section">
+                <div class="section-header">
+                    <h4>{{ t('manual_config_title') }}</h4>
+                    <ui-button @click="refreshCLICommands" class="small">{{ t('refresh_commands') }}</ui-button>
+                </div>
+                <p class="section-note">{{ t('manual_config_note') }}</p>
+
+                <div class="scope-selector" style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                    <span style="color: #aaa;">{{ t('config_scope') }}</span>
+                    <ui-button
+                        @click="cliScope = 'user'"
+                        :class="cliScope === 'user' ? 'primary' : ''"
+                        class="small">
+                        {{ t('scope_user') }}
+                    </ui-button>
+                    <ui-button
+                        @click="cliScope = 'project'"
+                        :class="cliScope === 'project' ? 'primary' : ''"
+                        class="small">
+                        {{ t('scope_project') }}
+                    </ui-button>
+                </div>
+
+                <div class="cli-commands">
+                    <div class="cli-item">
+                        <div class="cli-name">Claude CLI</div>
+                        <div class="cli-command-box">
+                            <pre>{{ cliCommands.claude }}</pre>
+                            <ui-button @click="copyCLICommand('claude')" class="small">{{ t('copy') }}</ui-button>
+                        </div>
+                    </div>
+
+                    <div class="cli-item">
+                        <div class="cli-name">Gemini CLI</div>
+                        <div class="cli-command-box">
+                            <pre>{{ cliCommands.gemini }}</pre>
+                            <ui-button @click="copyCLICommand('gemini')" class="small">{{ t('copy') }}</ui-button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="config-log">
+                <h4>{{ t('operation_log') }}</h4>
+                <div class="log-container">
+                    <div v-for="(log, index) in configLogs" :key="index" class="log-item" :class="log.type">
+                        <span class="log-time">{{ log.time }}</span>
+                        <span class="log-message">{{ log.message }}</span>
+                    </div>
+                    <div v-if="configLogs.length === 0" class="log-empty">{{ t('no_logs') }}</div>
+                </div>
+            </section>
+        </section>
+
+        <!-- 一键配置选项卡版权信息 -->
+        <section class="copyright-info">
+            <div class="brand-header brand-compact">
+                <img class="brand-logo" src="packages://cocos-mcp-server/static/icon.png" alt="Cocos MCP Server" />
+                <div class="brand-name">{{ t('brand_name') }}</div>
+            </div>
+            <div class="copyright-content">
+                <div class="copyright-text">
+                    <div class="copyright-line">⚡ {{ t('config_copyright_line1') }}</div>
+                    <div class="copyright-line">📧 a549623165@gmail.com | 💬 {{ t('contact_wechat') }}: lidaxian-AI | 💬 客服微信: vberai-support | 🛒 <a class="contact-link" :href="withUtm('https://www.vberai.com/game-engines/cocos')" target="_blank">{{ t('purchase_renew') }}</a></div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    </template><!-- /主界面 -->
+</div>
